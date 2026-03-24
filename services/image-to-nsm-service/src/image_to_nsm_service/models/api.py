@@ -54,3 +54,7 @@ class RawOutputResponse(BaseModel):
 class ErrorsResponse(BaseModel):
     job: JobState
     errors: List[ExtractionIssue] = Field(default_factory=list)
+
+
+class InputErrorResponse(BaseModel):
+    errors: List[ExtractionIssue] = Field(default_factory=list)

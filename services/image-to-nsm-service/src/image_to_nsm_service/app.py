@@ -3,9 +3,11 @@ import logging
 from fastapi import FastAPI
 
 from image_to_nsm_service.api.routes import router as api_router
+from image_to_nsm_service.api.errors import register_error_handlers
 from image_to_nsm_service.config import load_config
 from image_to_nsm_service.job_manager import InMemoryJobManager
 from image_to_nsm_service.logging import configure_logging
+from image_to_nsm_service.pipeline import ImageToNsmPipeline
 
 logger = logging.getLogger("image_to_nsm_service")
 
@@ -16,7 +18,10 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="Image to NSM Service", version="0.1.0")
     app.state.config = config
-    app.state.job_manager = InMemoryJobManager()
+    job_manager = InMemoryJobManager()
+    app.state.job_manager = job_manager
+    app.state.pipeline = ImageToNsmPipeline(job_manager)
+    register_error_handlers(app)
     app.include_router(api_router)
 
     @app.on_event("startup")

@@ -1,14 +1,17 @@
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
 
 from image_to_nsm_service.job_manager import InMemoryJobManager
 from image_to_nsm_service.models.api import (
     ErrorsResponse,
     ImageToNsmJobAcceptedResponse,
+    InputErrorResponse,
     JobState,
     JobStatusResponse,
     NsmResultResponse,
     RawOutputResponse,
 )
+from image_to_nsm_service.pipeline import ImageToNsmPipeline, ImageToNsmSubmission
+from image_to_nsm_service.validation.uploads import validate_image_upload
 
 router = APIRouter()
 
@@ -21,6 +24,10 @@ def health(request: Request) -> dict:
 
 def _get_job_manager(request: Request) -> InMemoryJobManager:
     return request.app.state.job_manager
+
+
+def _get_pipeline(request: Request) -> ImageToNsmPipeline:
+    return request.app.state.pipeline
 
 
 def _to_job_state(job) -> JobState:
@@ -36,13 +43,26 @@ def _to_job_state(job) -> JobState:
     "/image-to-nsm",
     response_model=ImageToNsmJobAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"model": InputErrorResponse},
+        status.HTTP_415_UNSUPPORTED_MEDIA_TYPE: {"model": InputErrorResponse},
+    },
 )
 async def submit_image_to_nsm(
     request: Request,
-    image: UploadFile = File(...),
+    image: UploadFile | None = File(None),
+    context: str | None = Form(None),
 ) -> ImageToNsmJobAcceptedResponse:
-    job_manager = _get_job_manager(request)
-    job = job_manager.create_job(input_filename=image.filename)
+    config = request.app.state.config
+    validated = await validate_image_upload(image, max_size_bytes=config.max_upload_size_bytes)
+    pipeline = _get_pipeline(request)
+    submission = ImageToNsmSubmission(
+        filename=validated.filename,
+        content_type=validated.content_type,
+        size_bytes=validated.size_bytes,
+        context=context,
+    )
+    job = pipeline.submit(submission)
     return ImageToNsmJobAcceptedResponse(job_id=job.job_id, status=job.status)
 
 

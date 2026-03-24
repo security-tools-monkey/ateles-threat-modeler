@@ -8,6 +8,7 @@ class AppConfig:
     host: str
     port: int
     log_level: str
+    max_upload_size_bytes: int
 
 
 def _get_env_int(name: str, default: int) -> int:
@@ -26,4 +27,5 @@ def load_config() -> AppConfig:
         host=os.getenv("SERVICE_HOST", "0.0.0.0"),
         port=_get_env_int("SERVICE_PORT", 8080),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
+        max_upload_size_bytes=_get_env_int("MAX_UPLOAD_SIZE_BYTES", 10 * 1024 * 1024),
     )
