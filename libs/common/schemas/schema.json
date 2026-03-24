@@ -1,0 +1,208 @@
+{
+  "schema_version": "0.2",
+  "model_id": "model-001",
+  "title": "Image processing platform",
+  "description": "Initial NSM extracted from architecture diagram",
+  "nodes": [
+    {
+      "id": "n1",
+      "kind": "identity",
+      "name": "End user",
+      "type": "external_user",
+      "trust_boundary": {
+        "level": "internet",
+        "name": "Public Internet",
+        "path": ["internet"]
+      },
+      "assets": [],
+      "controls": [],
+      "properties": {},
+      "tags": [],
+      "unknowns": [],
+      "provenance": {
+        "source": "image_upload",
+        "method": "llm_extraction",
+        "confidence": 0.93,
+        "evidence": ["label:end user"]
+      }
+    },
+    {
+      "id": "n2",
+      "kind": "object",
+      "name": "Load Balancer",
+      "type": "load_balancer",
+      "trust_boundary": {
+        "level": "public_network",
+        "name": "Public network",
+        "path": ["internet", "public_network"]
+      },
+      "assets": [],
+      "controls": [
+        {
+          "name": "TLS",
+          "category": "tls",
+          "mode": "preventive",
+          "status": "assumed"
+        }
+      ],
+      "properties": {
+        "ingress_ports": [22, 443]
+      },
+      "tags": ["internet-facing"],
+      "unknowns": [
+        {
+          "field": "controls",
+          "reason": "No clear WAF or rate limiting visible in the diagram",
+          "question_hint": "Is there WAF or rate limiting in front of the load balancer?"
+        }
+      ],
+      "provenance": {
+        "source": "image_upload",
+        "method": "llm_extraction",
+        "confidence": 0.88,
+        "evidence": ["label:Load Balancer"]
+      }
+    },
+    {
+      "id": "n3",
+      "kind": "object",
+      "name": "Monolith image processing",
+      "type": "service",
+      "trust_boundary": {
+        "level": "public_network",
+        "name": "Public network",
+        "path": ["internet", "public_network"]
+      },
+      "assets": [
+        {
+          "type": "photos",
+          "name": "uploaded_images",
+          "sensitivity": "high",
+          "direction": "processes"
+        }
+      ],
+      "controls": [],
+      "properties": {},
+      "tags": ["image-processing"],
+      "unknowns": [
+        {
+          "field": "authn",
+          "reason": "Service auth model is not visible",
+          "question_hint": "How do clients authenticate to this service?"
+        }
+      ],
+      "provenance": {
+        "source": "image_upload",
+        "method": "llm_extraction",
+        "confidence": 0.86,
+        "evidence": ["label:Monolith image processing"]
+      }
+    },
+    {
+      "id": "n4",
+      "kind": "object",
+      "name": "Bucket",
+      "type": "bucket",
+      "trust_boundary": {
+        "level": "private_network",
+        "name": "Private storage zone",
+        "path": ["internet", "private_network"]
+      },
+      "assets": [
+        {
+          "type": "photos",
+          "name": "image_objects",
+          "sensitivity": "high",
+          "direction": "stores"
+        }
+      ],
+      "controls": [
+        {
+          "name": "Encryption at rest",
+          "category": "encryption",
+          "mode": "preventive",
+          "status": "unknown"
+        }
+      ],
+      "properties": {},
+      "tags": [],
+      "unknowns": [],
+      "provenance": {
+        "source": "image_upload",
+        "method": "llm_extraction",
+        "confidence": 0.91,
+        "evidence": ["label:Bucket"]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "n1",
+      "target": "n2",
+      "name": "User request",
+      "direction": "uni",
+      "protocol": "https",
+      "authn": "unknown",
+      "assets": [
+        {
+          "type": "photos",
+          "name": "uploaded_images",
+          "sensitivity": "high",
+          "direction": "transmits"
+        }
+      ],
+      "controls": [],
+      "properties": {
+        "ports": [443]
+      },
+      "tags": ["internet-ingress"],
+      "unknowns": [
+        {
+          "field": "authn",
+          "reason": "Authentication mechanism not visible on diagram",
+          "question_hint": "Does the web/mobile client authenticate using JWT, OIDC, or session cookies?"
+        }
+      ],
+      "provenance": {
+        "source": "image_upload",
+        "method": "llm_extraction",
+        "confidence": 0.9,
+        "evidence": ["arrow:end user -> load balancer"]
+      }
+    },
+    {
+      "id": "e2",
+      "source": "n3",
+      "target": "n4",
+      "name": "Store images",
+      "direction": "uni",
+      "protocol": "s3",
+      "authn": "unknown",
+      "assets": [
+        {
+          "type": "photos",
+          "name": "processed_images",
+          "sensitivity": "high",
+          "direction": "transmits"
+        }
+      ],
+      "controls": [],
+      "properties": {},
+      "tags": [],
+      "unknowns": [
+        {
+          "field": "authn",
+          "reason": "Unknown whether signed URLs, IAM role, or static key is used",
+          "question_hint": "How does the service authenticate to the bucket?"
+        }
+      ],
+      "provenance": {
+        "source": "image_upload",
+        "method": "llm_extraction",
+        "confidence": 0.82,
+        "evidence": ["arrow:monolith -> bucket"]
+      }
+    }
+  ]
+}
