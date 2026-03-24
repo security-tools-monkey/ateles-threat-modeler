@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.2",
+  "schema_version": "0.1",
   "model_id": "model-001",
   "title": "Image processing platform",
   "description": "Initial NSM extracted from architecture diagram",
