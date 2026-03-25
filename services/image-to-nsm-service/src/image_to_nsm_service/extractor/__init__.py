@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 
 from ..llm_client import ImagePayload, LlmClient, LlmRequest
 from ..prompt_builder import PromptBuilder, PromptRequest
+from .raw_response_parser import RawResponseParseError, RawResponseParser
 
 
 @dataclass(frozen=True)
@@ -31,9 +32,15 @@ class Extractor(ABC):
 
 
 class LlmExtractor(Extractor):
-    def __init__(self, llm_client: LlmClient, prompt_builder: PromptBuilder) -> None:
+    def __init__(
+        self,
+        llm_client: LlmClient,
+        prompt_builder: PromptBuilder,
+        parser: RawResponseParser | None = None,
+    ) -> None:
         self._llm_client = llm_client
         self._prompt_builder = prompt_builder
+        self._parser = parser or RawResponseParser()
 
     def extract(self, request: ExtractionRequest) -> ExtractionResult:
         prompt_spec = self._prompt_builder.build(PromptRequest(context=request.context))
@@ -45,9 +52,13 @@ class LlmExtractor(Extractor):
                 context=request.context,
             )
         )
+        parse_result = self._parser.parse(llm_response.raw_output)
+        if parse_result.errors:
+            raise RawResponseParseError(parse_result.errors)
+
         return ExtractionResult(
             prompt_version=prompt_spec.version,
             raw_output=llm_response.raw_output,
-            nsm=llm_response.parsed_json,
+            nsm=parse_result.payload or {},
             model=llm_response.model,
         )
