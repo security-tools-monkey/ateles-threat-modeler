@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from image_to_nsm_service.models.api import InputErrorResponse
-from image_to_nsm_service.validation.uploads import UploadValidationError
+from ..models.api import InputErrorResponse
+from ..validation.uploads import UploadValidationError
 
 
 def register_error_handlers(app: FastAPI) -> None:

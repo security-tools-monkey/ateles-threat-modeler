@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from image_to_nsm_service.models.api import ExtractionIssue, JobStatus
+from ..models.api import ExtractionIssue, JobStatus
 
 
 @dataclass

@@ -5,7 +5,7 @@ from typing import Iterable, Optional
 
 from fastapi import UploadFile, status
 
-from image_to_nsm_service.models.api import ExtractionIssue
+from ..models.api import ExtractionIssue
 
 ALLOWED_CONTENT_TYPES = {
     "image/png",

@@ -1,5 +1,6 @@
 """Domain models (placeholder)."""
-from image_to_nsm_service.models.api import (
+
+from .api import (
     ErrorsResponse,
     ExtractionIssue,
     ImageToNsmJobAcceptedResponse,

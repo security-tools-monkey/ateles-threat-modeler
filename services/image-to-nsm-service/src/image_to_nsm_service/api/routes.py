@@ -1,7 +1,7 @@
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
 
-from image_to_nsm_service.job_manager import InMemoryJobManager
-from image_to_nsm_service.models.api import (
+from ..job_manager import InMemoryJobManager
+from ..models.api import (
     ErrorsResponse,
     ImageToNsmJobAcceptedResponse,
     InputErrorResponse,
@@ -10,8 +10,8 @@ from image_to_nsm_service.models.api import (
     NsmResultResponse,
     RawOutputResponse,
 )
-from image_to_nsm_service.pipeline import ImageToNsmPipeline, ImageToNsmSubmission
-from image_to_nsm_service.validation.uploads import validate_image_upload
+from ..pipeline import ImageToNsmPipeline, ImageToNsmSubmission
+from ..validation.uploads import validate_image_upload
 
 router = APIRouter()
 

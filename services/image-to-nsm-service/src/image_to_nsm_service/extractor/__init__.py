@@ -6,8 +6,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from image_to_nsm_service.llm_client import ImagePayload, LlmClient, LlmRequest
-from image_to_nsm_service.prompt_builder import PromptBuilder, PromptRequest
+from ..llm_client import ImagePayload, LlmClient, LlmRequest
+from ..prompt_builder import PromptBuilder, PromptRequest
 
 
 @dataclass(frozen=True)

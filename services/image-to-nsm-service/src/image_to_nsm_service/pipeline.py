@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from image_to_nsm_service.job_manager import InMemoryJobManager
+from .job_manager import InMemoryJobManager
 
 
 @dataclass(frozen=True)

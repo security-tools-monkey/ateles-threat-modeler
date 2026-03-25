@@ -2,12 +2,12 @@ import logging
 
 from fastapi import FastAPI
 
-from image_to_nsm_service.api.routes import router as api_router
-from image_to_nsm_service.api.errors import register_error_handlers
-from image_to_nsm_service.config import load_config
-from image_to_nsm_service.job_manager import InMemoryJobManager
-from image_to_nsm_service.logging import configure_logging
-from image_to_nsm_service.pipeline import ImageToNsmPipeline
+from .api.routes import router as api_router
+from .api.errors import register_error_handlers
+from .config import load_config
+from .job_manager import InMemoryJobManager
+from .logging import configure_logging
+from .pipeline import ImageToNsmPipeline
 
 logger = logging.getLogger("image_to_nsm_service")
 
