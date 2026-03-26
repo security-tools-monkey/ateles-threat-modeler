@@ -1,6 +1,6 @@
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
 
-from ..job_manager import InMemoryJobManager
+from ..job_manager import JobManager
 from ..models.api import (
     ErrorsResponse,
     ImageToNsmJobAcceptedResponse,
@@ -22,7 +22,7 @@ def health(request: Request) -> dict:
     return {"status": "ok", "service": config.service_name}
 
 
-def _get_job_manager(request: Request) -> InMemoryJobManager:
+def _get_job_manager(request: Request) -> JobManager:
     return request.app.state.job_manager
 
 

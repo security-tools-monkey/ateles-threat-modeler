@@ -1,32 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from ..models.api import ExtractionIssue, JobStatus
-
-
-@dataclass
-class JobRecord:
-    job_id: str
-    status: JobStatus
-    created_at: datetime
-    updated_at: datetime
-    input_filename: Optional[str] = None
-    input_content_type: Optional[str] = None
-    input_size_bytes: Optional[int] = None
-    input_context: Optional[str] = None
-    input_image_bytes: Optional[bytes] = None
-    raw_output: Optional[str] = None
-    normalized_output: Optional[Dict[str, Any]] = None
-    nsm: Optional[Dict[str, Any]] = None
-    validation_report: Optional[Dict[str, Any]] = None
-    errors: List[ExtractionIssue] = field(default_factory=list)
-    unknowns: List[Dict[str, Any]] = field(default_factory=list)
-    confidence: Optional[float] = None
-    provenance: Optional[Dict[str, Any]] = None
+from ..models.api import JobStatus
+from .models import JobRecord, ProcessingLogEntry
 
 
 class InMemoryJobManager:
@@ -59,4 +38,19 @@ class InMemoryJobManager:
         return job
 
     def set_status(self, job_id: str, status: JobStatus) -> Optional[JobRecord]:
-        return self.update_job(job_id, status=status)
+        job = self.update_job(job_id, status=status)
+        if job is not None:
+            self.append_log(job_id, "info", f"Status set to {status.value}.")
+        return job
+
+    def append_log(self, job_id: str, level: str, message: str) -> None:
+        job = self._jobs.get(job_id)
+        if job is None:
+            return
+        job.logs.append(
+            ProcessingLogEntry(
+                timestamp=datetime.now(timezone.utc),
+                level=level,
+                message=message,
+            )
+        )

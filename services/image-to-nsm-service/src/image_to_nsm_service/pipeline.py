@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional
 
-from .job_manager import InMemoryJobManager
+from .job_manager import JobManager
 from .llm_client import ImagePayload, LlmClient, LlmRequest, MockLlmClient
 from .models.api import (
     ExtractionIssue,
@@ -29,7 +29,7 @@ class ImageToNsmSubmission:
 class ImageToNsmPipeline:
     def __init__(
         self,
-        job_manager: InMemoryJobManager,
+        job_manager: JobManager,
         *,
         prompt_builder: Optional[PromptBuilder] = None,
         llm_client: Optional[LlmClient] = None,
@@ -54,6 +54,7 @@ class ImageToNsmPipeline:
             input_image_bytes=submission.data,
         )
         self._job_manager.set_status(job.job_id, JobStatus.pending)
+        self._log(job.job_id, "info", "Job accepted for processing.")
         try:
             self._run_pipeline(job.job_id, submission)
         except Exception as exc:
@@ -62,12 +63,15 @@ class ImageToNsmPipeline:
                 status=JobStatus.failed,
                 errors=[_issue("PIPELINE_ERROR", f"Pipeline failure: {exc}", severity="error")],
             )
+            self._log(job.job_id, "error", f"Pipeline failure: {exc}")
         return self._job_manager.get_job(job.job_id) or job
 
     def _run_pipeline(self, job_id: str, submission: ImageToNsmSubmission) -> None:
         self._job_manager.set_status(job_id, JobStatus.running)
+        self._log(job_id, "info", "Pipeline started.")
 
         prompt_spec = self._prompt_builder.build(PromptRequest(context=submission.context))
+        self._log(job_id, "info", f"Prompt built (version {prompt_spec.version}).")
         llm_request = LlmRequest(
             image=ImagePayload(
                 filename=submission.filename,
@@ -81,6 +85,7 @@ class ImageToNsmPipeline:
         llm_response = self._llm_client.generate(llm_request)
         raw_output = llm_response.raw_output
         self._job_manager.update_job(job_id, raw_output=raw_output)
+        self._log(job_id, "info", "Raw LLM output stored.")
 
         parse_result = self._raw_parser.parse(raw_output)
         issues: List[ExtractionIssue] = list(parse_result.errors)
@@ -92,13 +97,16 @@ class ImageToNsmPipeline:
                 validation_report=report.model_dump(),
                 errors=issues,
             )
+            self._log(job_id, "warning", "LLM output parsing failed.")
             return
 
         normalization_result: NormalizationResult = self._normalizer(parse_result.payload)
         normalized_payload = normalization_result.payload
+        self._log(job_id, "info", "Normalization completed.")
 
         validation_result: ValidationResult = self._validator(normalized_payload)
         validation_report = _to_validation_report(validation_result, normalization_result.notes)
+        self._log(job_id, "info", "Validation completed.")
 
         issues.extend(_issues_from_validation(validation_result))
 
@@ -125,6 +133,13 @@ class ImageToNsmPipeline:
             confidence=confidence,
             provenance=provenance,
         )
+        self._log(job_id, "info", f"Pipeline completed with status {status.value}.")
+
+    def _log(self, job_id: str, level: str, message: str) -> None:
+        try:
+            self._job_manager.append_log(job_id, level, message)
+        except AttributeError:
+            return
 
 
 def _to_validation_report(
