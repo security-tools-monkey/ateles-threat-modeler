@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import base64
+import logging
 from typing import Any, Dict, Optional
 
 from openai import OpenAI
 
 from . import ImagePayload, LlmClient, LlmClientError, LlmProviderConfig, LlmRequest, LlmResponse
+
+logger = logging.getLogger("image_to_nsm_service.llm_client.openai")
 
 
 class OpenAiLlmClient(LlmClient):
@@ -27,23 +30,28 @@ class OpenAiLlmClient(LlmClient):
 
     def generate(self, request: LlmRequest) -> LlmResponse:
         image_url = _encode_image_data_url(request.image)
+        request_payload = {
+            "model": self._model,
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": request.prompt},
+                        {"type": "input_image", "image_url": image_url},
+                    ],
+                }
+            ],
+        }
         metadata: Dict[str, Any] = {
             "provider": "openai",
             "prompt_version": request.prompt_version,
             "model": self._model,
         }
         try:
+            logger.debug("OpenAI request payload: %s", request_payload)
             response = self._client.with_options(timeout=self._timeout_seconds).responses.create(
-                model=self._model,
-                input=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "input_text", "text": request.prompt},
-                            {"type": "input_image", "image_url": image_url},
-                        ],
-                    }
-                ],
+                model=request_payload["model"],
+                input=request_payload["input"],
             )
         except Exception as exc:
             raise LlmClientError(
@@ -61,6 +69,17 @@ class OpenAiLlmClient(LlmClient):
             metadata["response_id"] = response_id
         if isinstance(response_model, str):
             metadata["model"] = response_model
+        logger.debug(
+            "OpenAI response received request_id=%s response_id=%s model=%s",
+            request_id,
+            response_id,
+            response_model,
+        )
+
+        usage = _extract_usage(getattr(response, "usage", None))
+        if usage:
+            metadata["usage"] = usage
+            logger.debug("OpenAI token usage: %s", usage)
 
         raw_output = getattr(response, "output_text", None)
         if not isinstance(raw_output, str) or not raw_output.strip():
@@ -69,6 +88,7 @@ class OpenAiLlmClient(LlmClient):
                 "OpenAI response contained no text output.",
                 metadata=metadata,
             )
+        logger.debug("OpenAI raw output: %s", raw_output)
 
         parsed_json: Dict[str, Any] = {}
         return LlmResponse(
@@ -99,3 +119,25 @@ def _extract_request_id(response: Any) -> Optional[str]:
     if isinstance(request_id, str) and request_id:
         return request_id
     return None
+
+
+def _extract_usage(usage: Any) -> Dict[str, int]:
+    if usage is None:
+        return {}
+    if isinstance(usage, dict):
+        return _normalize_usage_map(usage)
+    result: Dict[str, int] = {}
+    for key in ("input_tokens", "output_tokens", "total_tokens", "prompt_tokens", "completion_tokens"):
+        value = getattr(usage, key, None)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            result[key] = int(value)
+    return result
+
+
+def _normalize_usage_map(usage: Dict[str, Any]) -> Dict[str, int]:
+    result: Dict[str, int] = {}
+    for key in ("input_tokens", "output_tokens", "total_tokens", "prompt_tokens", "completion_tokens"):
+        value = usage.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            result[key] = int(value)
+    return result

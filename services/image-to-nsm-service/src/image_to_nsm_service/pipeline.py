@@ -125,7 +125,19 @@ class ImageToNsmPipeline:
             prompt_version=prompt_spec.version,
             context=submission.context,
         )
+        self._logger.debug(
+            "LLM request prepared prompt_version=%s prompt_chars=%s context_chars=%s "
+            "image_filename=%s image_content_type=%s image_bytes=%s",
+            prompt_spec.version,
+            len(prompt_spec.text),
+            len(submission.context) if submission.context else 0,
+            submission.filename,
+            submission.content_type,
+            len(submission.data) if submission.data else 0,
+        )
+        self._logger.debug("LLM prompt text: %s", prompt_spec.text)
         try:
+            self._logger.debug("LLM request dispatching.")
             self._log(context, "info", "LLM request started.", stage="llm_request")
             llm_response = self._llm_client.generate(llm_request)
         except LlmClientError as exc:
@@ -158,6 +170,11 @@ class ImageToNsmPipeline:
             llm_request_id=llm_response.metadata.get("request_id"),
             llm_response_id=llm_response.metadata.get("response_id"),
         )
+        if llm_response.metadata:
+            self._logger.debug("LLM response metadata: %s", llm_response.metadata)
+        usage = llm_response.metadata.get("usage")
+        if usage is not None:
+            self._logger.debug("LLM token usage: %s", usage)
         self._log(
             context,
             "info",
@@ -165,6 +182,7 @@ class ImageToNsmPipeline:
             stage="llm_request",
         )
         raw_output = llm_response.raw_output
+        self._logger.debug("LLM raw output: %s", raw_output)
         self._job_manager.update_job(job_id, raw_output=raw_output)
         self._log(context, "info", "Raw LLM output stored.", stage="raw_output_store")
 
