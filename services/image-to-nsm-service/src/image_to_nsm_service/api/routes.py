@@ -60,6 +60,7 @@ async def submit_image_to_nsm(
         filename=validated.filename,
         content_type=validated.content_type,
         size_bytes=validated.size_bytes,
+        data=validated.data,
         context=context,
     )
     job = pipeline.submit(submission)
@@ -101,6 +102,7 @@ async def get_image_to_nsm_result(
         unknowns=job.unknowns,
         confidence=job.confidence,
         provenance=job.provenance,
+        validation=job.validation_report,
     )
 
 
@@ -133,4 +135,9 @@ async def get_image_to_nsm_errors(
     job = job_manager.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-    return ErrorsResponse(job=_to_job_state(job), errors=job.errors)
+    return ErrorsResponse(
+        job=_to_job_state(job),
+        errors=job.errors,
+        unknowns=job.unknowns,
+        validation=job.validation_report,
+    )

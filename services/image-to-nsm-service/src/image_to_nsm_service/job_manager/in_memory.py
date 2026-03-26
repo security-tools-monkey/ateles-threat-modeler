@@ -15,10 +15,16 @@ class JobRecord:
     created_at: datetime
     updated_at: datetime
     input_filename: Optional[str] = None
+    input_content_type: Optional[str] = None
+    input_size_bytes: Optional[int] = None
+    input_context: Optional[str] = None
+    input_image_bytes: Optional[bytes] = None
     raw_output: Optional[str] = None
+    normalized_output: Optional[Dict[str, Any]] = None
     nsm: Optional[Dict[str, Any]] = None
+    validation_report: Optional[Dict[str, Any]] = None
     errors: List[ExtractionIssue] = field(default_factory=list)
-    unknowns: List[str] = field(default_factory=list)
+    unknowns: List[Dict[str, Any]] = field(default_factory=list)
     confidence: Optional[float] = None
     provenance: Optional[Dict[str, Any]] = None
 
@@ -42,3 +48,15 @@ class InMemoryJobManager:
 
     def get_job(self, job_id: str) -> Optional[JobRecord]:
         return self._jobs.get(job_id)
+
+    def update_job(self, job_id: str, **updates: Any) -> Optional[JobRecord]:
+        job = self._jobs.get(job_id)
+        if job is None:
+            return None
+        for key, value in updates.items():
+            setattr(job, key, value)
+        job.updated_at = datetime.now(timezone.utc)
+        return job
+
+    def set_status(self, job_id: str, status: JobStatus) -> Optional[JobRecord]:
+        return self.update_job(job_id, status=status)

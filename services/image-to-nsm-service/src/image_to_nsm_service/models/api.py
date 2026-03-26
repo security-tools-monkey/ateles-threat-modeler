@@ -38,12 +38,35 @@ class ExtractionIssue(BaseModel):
     severity: str = "info"
 
 
+class NormalizationNote(BaseModel):
+    path: str
+    message: str
+    original_value: Optional[Any] = None
+    normalized_value: Optional[Any] = None
+
+
+class ValidationReport(BaseModel):
+    valid: bool
+    schema_errors: List[str] = Field(default_factory=list)
+    semantic_errors: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    normalization_notes: List[NormalizationNote] = Field(default_factory=list)
+
+
+class UnknownField(BaseModel):
+    field: str
+    reason: str
+    question_hint: str = ""
+    location: Optional[str] = None
+
+
 class NsmResultResponse(BaseModel):
     job: JobState
     nsm: Optional[Dict[str, Any]] = None
-    unknowns: List[str] = Field(default_factory=list)
+    unknowns: List[UnknownField] = Field(default_factory=list)
     confidence: Optional[float] = None
     provenance: Optional[Dict[str, Any]] = None
+    validation: Optional[ValidationReport] = None
 
 
 class RawOutputResponse(BaseModel):
@@ -54,6 +77,8 @@ class RawOutputResponse(BaseModel):
 class ErrorsResponse(BaseModel):
     job: JobState
     errors: List[ExtractionIssue] = Field(default_factory=list)
+    unknowns: List[UnknownField] = Field(default_factory=list)
+    validation: Optional[ValidationReport] = None
 
 
 class InputErrorResponse(BaseModel):
