@@ -30,12 +30,6 @@ def validate_nsm_payload(payload: JsonInput) -> ValidationResult:
         return result
 
     result.schema_errors.extend(validate_schema(parsed))
-    if result.schema_errors:
-        return result
-
     result.semantic_errors.extend(validate_semantics(parsed))
-    if result.semantic_errors:
-        return result
-
     result.warnings.extend(warn_on_quality(parsed))
     return result

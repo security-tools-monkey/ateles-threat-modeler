@@ -1,4 +1,6 @@
+import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
 
 from .job_manager import JobManager
@@ -30,6 +32,15 @@ class ImageToNsmSubmission:
     size_bytes: int
     data: bytes
     context: Optional[str]
+    request_id: Optional[str] = None
+    correlation_id: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class PipelineContext:
+    job_id: str
+    request_id: str
+    correlation_id: Optional[str] = None
 
 
 class ImageToNsmPipeline:
@@ -49,32 +60,45 @@ class ImageToNsmPipeline:
         self._raw_parser = raw_parser or RawResponseParser(strip_code_fences=False)
         self._normalizer = normalizer
         self._validator = validator
+        self._logger = logging.getLogger("image_to_nsm_service.pipeline")
 
     def submit(self, submission: ImageToNsmSubmission):
         job = self._job_manager.create_job(input_filename=submission.filename)
+        request_id = submission.request_id or job.job_id
+        correlation_id = submission.correlation_id
         self._job_manager.update_job(
             job.job_id,
             input_content_type=submission.content_type,
             input_size_bytes=submission.size_bytes,
             input_context=submission.context,
             input_image_bytes=submission.data,
+            request_id=request_id,
+            correlation_id=correlation_id,
         )
         self._job_manager.set_status(job.job_id, JobStatus.pending)
-        self._log(job.job_id, "info", "Job accepted for processing.")
+        context = PipelineContext(
+            job_id=job.job_id,
+            request_id=request_id,
+            correlation_id=correlation_id,
+        )
+        self._log(context, "info", "Job accepted for processing.", stage="accept")
         try:
-            self._run_pipeline(job.job_id, submission)
+            self._run_pipeline(context, submission)
         except Exception as exc:
             self._job_manager.update_job(
                 job.job_id,
                 status=JobStatus.failed,
+                processing_completed_at=datetime.now(timezone.utc),
                 errors=[_issue("PIPELINE_ERROR", f"Pipeline failure: {exc}", severity="error")],
             )
-            self._log(job.job_id, "error", f"Pipeline failure: {exc}")
+            self._log(context, "error", f"Pipeline failure: {exc}", stage="pipeline")
         return self._job_manager.get_job(job.job_id) or job
 
-    def _run_pipeline(self, job_id: str, submission: ImageToNsmSubmission) -> None:
+    def _run_pipeline(self, context: PipelineContext, submission: ImageToNsmSubmission) -> None:
+        job_id = context.job_id
         self._job_manager.set_status(job_id, JobStatus.running)
-        self._log(job_id, "info", "Pipeline started.")
+        self._job_manager.update_job(job_id, processing_started_at=datetime.now(timezone.utc))
+        self._log(context, "info", "Pipeline started.", stage="pipeline")
 
         prompt_spec = self._prompt_builder.build(PromptRequest(context=submission.context))
         schema_version = load_schema_version()
@@ -83,7 +107,12 @@ class ImageToNsmPipeline:
             prompt_version=prompt_spec.version,
             schema_version=schema_version,
         )
-        self._log(job_id, "info", f"Prompt built (version {prompt_spec.version}).")
+        self._log(
+            context,
+            "info",
+            f"Prompt built (version {prompt_spec.version}, schema {schema_version}).",
+            stage="prompt_build",
+        )
         llm_request = LlmRequest(
             image=ImagePayload(
                 filename=submission.filename,
@@ -95,6 +124,7 @@ class ImageToNsmPipeline:
             context=submission.context,
         )
         try:
+            self._log(context, "info", "LLM request started.", stage="llm_request")
             llm_response = self._llm_client.generate(llm_request)
         except LlmClientError as exc:
             self._job_manager.update_job(
@@ -104,17 +134,19 @@ class ImageToNsmPipeline:
                 llm_model=exc.metadata.get("model"),
                 llm_request_id=exc.metadata.get("request_id"),
                 llm_response_id=exc.metadata.get("response_id"),
+                processing_completed_at=datetime.now(timezone.utc),
                 errors=[_issue(exc.code, str(exc), severity="error")],
             )
-            self._log(job_id, "error", f"LLM request failed: {exc}")
+            self._log(context, "error", f"LLM request failed: {exc}", stage="llm_request")
             return
         except Exception as exc:
             self._job_manager.update_job(
                 job_id,
                 status=JobStatus.failed,
+                processing_completed_at=datetime.now(timezone.utc),
                 errors=[_issue("LLM_REQUEST_FAILED", f"LLM request failed: {exc}", severity="error")],
             )
-            self._log(job_id, "error", f"LLM request failed: {exc}")
+            self._log(context, "error", f"LLM request failed: {exc}", stage="llm_request")
             return
 
         self._job_manager.update_job(
@@ -125,13 +157,14 @@ class ImageToNsmPipeline:
             llm_response_id=llm_response.metadata.get("response_id"),
         )
         self._log(
-            job_id,
+            context,
             "info",
             f"LLM response received (model {llm_response.model}).",
+            stage="llm_request",
         )
         raw_output = llm_response.raw_output
         self._job_manager.update_job(job_id, raw_output=raw_output)
-        self._log(job_id, "info", "Raw LLM output stored.")
+        self._log(context, "info", "Raw LLM output stored.", stage="raw_output_store")
 
         parse_result = self._raw_parser.parse(raw_output)
         issues: List[ExtractionIssue] = list(parse_result.errors)
@@ -140,20 +173,31 @@ class ImageToNsmPipeline:
             self._job_manager.update_job(
                 job_id,
                 status=JobStatus.failed,
+                processing_completed_at=datetime.now(timezone.utc),
                 validation_report=report.model_dump(),
                 errors=issues,
             )
-            self._log(job_id, "warning", "LLM output parsing failed.")
+            self._log(context, "warning", "LLM output parsing failed.", stage="parse")
             return
 
         normalization_result: NormalizationResult = self._normalizer(parse_result.payload)
         normalized_payload = normalization_result.payload
         self._job_manager.update_job(job_id, normalization_version=NORMALIZATION_VERSION)
-        self._log(job_id, "info", "Normalization completed.")
+        self._log(
+            context,
+            "info",
+            f"Normalization completed (version {NORMALIZATION_VERSION}).",
+            stage="normalize",
+        )
 
         validation_result: ValidationResult = self._validator(normalized_payload)
         validation_report = _to_validation_report(validation_result, normalization_result.notes)
-        self._log(job_id, "info", "Validation completed.")
+        self._log(
+            context,
+            "info",
+            f"Validation completed (warnings={len(validation_result.warnings)}).",
+            stage="validate",
+        )
 
         issues.extend(_issues_from_validation(validation_result))
 
@@ -172,6 +216,7 @@ class ImageToNsmPipeline:
         self._job_manager.update_job(
             job_id,
             status=status,
+            processing_completed_at=datetime.now(timezone.utc),
             normalized_output=normalized_payload,
             nsm=final_nsm,
             validation_report=validation_report.model_dump(),
@@ -180,13 +225,33 @@ class ImageToNsmPipeline:
             confidence=confidence,
             provenance=provenance,
         )
-        self._log(job_id, "info", f"Pipeline completed with status {status.value}.")
+        self._log(
+            context,
+            "info",
+            f"Pipeline completed with status {status.value}.",
+            stage="pipeline",
+        )
 
-    def _log(self, job_id: str, level: str, message: str) -> None:
+    def _log(
+        self,
+        context: PipelineContext,
+        level: str,
+        message: str,
+        *,
+        stage: Optional[str] = None,
+    ) -> None:
+        parts = [f"job_id={context.job_id}", f"request_id={context.request_id}"]
+        if context.correlation_id:
+            parts.append(f"correlation_id={context.correlation_id}")
+        if stage:
+            parts.append(f"stage={stage}")
+        formatted = f"{' '.join(parts)} {message}"
         try:
-            self._job_manager.append_log(job_id, level, message)
+            self._job_manager.append_log(context.job_id, level, formatted)
         except AttributeError:
             return
+        log_level = getattr(logging, level.upper(), logging.INFO)
+        self._logger.log(log_level, formatted)
 
 
 def _to_validation_report(

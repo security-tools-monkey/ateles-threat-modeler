@@ -14,12 +14,26 @@ class ProcessingLogEntry:
     message: str
 
 
+@dataclass(frozen=True)
+class ArtifactMetadata:
+    artifact_type: str
+    path: Optional[str]
+    content_type: Optional[str]
+    size_bytes: Optional[int]
+    created_at: datetime
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
 @dataclass
 class JobRecord:
     job_id: str
     status: JobStatus
     created_at: datetime
     updated_at: datetime
+    request_id: Optional[str] = None
+    correlation_id: Optional[str] = None
+    processing_started_at: Optional[datetime] = None
+    processing_completed_at: Optional[datetime] = None
     input_filename: Optional[str] = None
     input_content_type: Optional[str] = None
     input_size_bytes: Optional[int] = None
@@ -45,4 +59,5 @@ class JobRecord:
     prompt_version: Optional[str] = None
     normalization_version: Optional[str] = None
     schema_version: Optional[str] = None
+    artifacts: Dict[str, ArtifactMetadata] = field(default_factory=dict)
     logs: List[ProcessingLogEntry] = field(default_factory=list)

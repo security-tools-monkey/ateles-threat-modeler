@@ -15,11 +15,23 @@ class JobStatus(str, Enum):
     failed = "failed"
 
 
+class ArtifactSummary(BaseModel):
+    artifact_type: str
+    content_type: Optional[str] = None
+    size_bytes: Optional[int] = None
+    created_at: Optional[datetime] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 class JobState(BaseModel):
     job_id: str
     status: JobStatus
     created_at: datetime
     updated_at: datetime
+    request_id: Optional[str] = None
+    correlation_id: Optional[str] = None
+    processing_started_at: Optional[datetime] = None
+    processing_completed_at: Optional[datetime] = None
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
     llm_request_id: Optional[str] = None
@@ -27,11 +39,13 @@ class JobState(BaseModel):
     prompt_version: Optional[str] = None
     normalization_version: Optional[str] = None
     schema_version: Optional[str] = None
+    artifacts: Dict[str, ArtifactSummary] = Field(default_factory=dict)
 
 
 class ImageToNsmJobAcceptedResponse(BaseModel):
     job_id: str
     status: JobStatus
+    job: Optional[JobState] = None
 
 
 class JobStatusResponse(BaseModel):

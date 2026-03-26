@@ -14,6 +14,10 @@ class JobRow:
     status: str
     created_at: str
     updated_at: str
+    request_id: Optional[str]
+    correlation_id: Optional[str]
+    processing_started_at: Optional[str]
+    processing_completed_at: Optional[str]
     input_filename: Optional[str]
     input_content_type: Optional[str]
     input_size_bytes: Optional[int]
@@ -38,6 +42,7 @@ class ArtifactRow:
     content_type: Optional[str]
     size_bytes: Optional[int]
     created_at: str
+    metadata_json: Optional[str]
 
 
 @dataclass(frozen=True)
@@ -96,6 +101,10 @@ class SqliteJobStore:
             status=row["status"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            request_id=row["request_id"],
+            correlation_id=row["correlation_id"],
+            processing_started_at=row["processing_started_at"],
+            processing_completed_at=row["processing_completed_at"],
             input_filename=row["input_filename"],
             input_content_type=row["input_content_type"],
             input_size_bytes=row["input_size_bytes"],
@@ -130,13 +139,16 @@ class SqliteJobStore:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO job_artifacts (job_id, artifact_type, path, content_type, size_bytes, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO job_artifacts (
+                    job_id, artifact_type, path, content_type, size_bytes, created_at, metadata_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(job_id, artifact_type) DO UPDATE SET
                     path = excluded.path,
                     content_type = excluded.content_type,
                     size_bytes = excluded.size_bytes,
-                    created_at = excluded.created_at
+                    created_at = excluded.created_at,
+                    metadata_json = excluded.metadata_json
                 """,
                 (
                     job_id,
@@ -145,13 +157,17 @@ class SqliteJobStore:
                     artifact.content_type,
                     artifact.size_bytes,
                     artifact.created_at,
+                    artifact.metadata_json,
                 ),
             )
 
     def list_artifacts(self, job_id: str) -> Dict[str, ArtifactRow]:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT artifact_type, path, content_type, size_bytes, created_at FROM job_artifacts WHERE job_id = ?",
+                """
+                SELECT artifact_type, path, content_type, size_bytes, created_at, metadata_json
+                FROM job_artifacts WHERE job_id = ?
+                """,
                 (job_id,),
             ).fetchall()
         artifacts: Dict[str, ArtifactRow] = {}
@@ -162,6 +178,7 @@ class SqliteJobStore:
                 content_type=row["content_type"],
                 size_bytes=row["size_bytes"],
                 created_at=row["created_at"],
+                metadata_json=row["metadata_json"],
             )
         return artifacts
 
@@ -201,6 +218,10 @@ class SqliteJobStore:
                     status TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
+                    request_id TEXT,
+                    correlation_id TEXT,
+                    processing_started_at TEXT,
+                    processing_completed_at TEXT,
                     input_filename TEXT,
                     input_content_type TEXT,
                     input_size_bytes INTEGER,
@@ -224,6 +245,7 @@ class SqliteJobStore:
                     content_type TEXT,
                     size_bytes INTEGER,
                     created_at TEXT NOT NULL,
+                    metadata_json TEXT,
                     PRIMARY KEY (job_id, artifact_type)
                 );
                 CREATE TABLE IF NOT EXISTS job_logs (
@@ -239,6 +261,10 @@ class SqliteJobStore:
 
     def _ensure_columns(self, conn: sqlite3.Connection) -> None:
         expected = {
+            "request_id": "TEXT",
+            "correlation_id": "TEXT",
+            "processing_started_at": "TEXT",
+            "processing_completed_at": "TEXT",
             "llm_provider": "TEXT",
             "llm_model": "TEXT",
             "llm_request_id": "TEXT",
@@ -252,6 +278,17 @@ class SqliteJobStore:
             if column in existing:
                 continue
             conn.execute(f"ALTER TABLE jobs ADD COLUMN {column} {column_type}")
+
+        artifact_expected = {
+            "metadata_json": "TEXT",
+        }
+        artifact_existing = {
+            row["name"] for row in conn.execute("PRAGMA table_info(job_artifacts)").fetchall()
+        }
+        for column, column_type in artifact_expected.items():
+            if column in artifact_existing:
+                continue
+            conn.execute(f"ALTER TABLE job_artifacts ADD COLUMN {column} {column_type}")
 
 
 def serialize_json(value: Any) -> Optional[str]:

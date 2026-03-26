@@ -9,6 +9,7 @@ from ..models.api import (
     JobStatusResponse,
     NsmResultResponse,
     RawOutputResponse,
+    ArtifactSummary,
 )
 from ..pipeline import ImageToNsmPipeline, ImageToNsmSubmission
 from ..validation.uploads import validate_image_upload
@@ -31,11 +32,24 @@ def _get_pipeline(request: Request) -> ImageToNsmPipeline:
 
 
 def _to_job_state(job) -> JobState:
+    artifacts = {}
+    for artifact_type, artifact in (job.artifacts or {}).items():
+        artifacts[artifact_type] = ArtifactSummary(
+            artifact_type=artifact.artifact_type,
+            content_type=artifact.content_type,
+            size_bytes=artifact.size_bytes,
+            created_at=artifact.created_at,
+            metadata=artifact.metadata or {},
+        )
     return JobState(
         job_id=job.job_id,
         status=job.status,
         created_at=job.created_at,
         updated_at=job.updated_at,
+        request_id=job.request_id,
+        correlation_id=job.correlation_id,
+        processing_started_at=job.processing_started_at,
+        processing_completed_at=job.processing_completed_at,
         llm_provider=job.llm_provider,
         llm_model=job.llm_model,
         llm_request_id=job.llm_request_id,
@@ -43,6 +57,7 @@ def _to_job_state(job) -> JobState:
         prompt_version=job.prompt_version,
         normalization_version=job.normalization_version,
         schema_version=job.schema_version,
+        artifacts=artifacts,
     )
 
 
@@ -63,15 +78,23 @@ async def submit_image_to_nsm(
     config = request.app.state.config
     validated = await validate_image_upload(image, max_size_bytes=config.max_upload_size_bytes)
     pipeline = _get_pipeline(request)
+    request_id = request.headers.get("X-Request-Id")
+    correlation_id = request.headers.get("X-Correlation-Id")
     submission = ImageToNsmSubmission(
         filename=validated.filename,
         content_type=validated.content_type,
         size_bytes=validated.size_bytes,
         data=validated.data,
         context=context,
+        request_id=request_id,
+        correlation_id=correlation_id,
     )
     job = pipeline.submit(submission)
-    return ImageToNsmJobAcceptedResponse(job_id=job.job_id, status=job.status)
+    return ImageToNsmJobAcceptedResponse(
+        job_id=job.job_id,
+        status=job.status,
+        job=_to_job_state(job),
+    )
 
 
 @router.get(
