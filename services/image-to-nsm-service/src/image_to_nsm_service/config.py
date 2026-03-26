@@ -21,6 +21,7 @@ class AppConfig:
     openai_base_url: Optional[str]
     openai_organization: Optional[str]
     openai_project: Optional[str]
+    job_log_to_console: bool
 
 
 def _get_env_int(name: str, default: int) -> int:
@@ -41,6 +42,18 @@ def _get_env_float(name: str, default: float) -> float:
         return float(raw)
     except ValueError:
         return default
+
+
+def _get_env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return default
 
 
 def load_config() -> AppConfig:
@@ -65,4 +78,5 @@ def load_config() -> AppConfig:
         openai_base_url=os.getenv("OPENAI_BASE_URL"),
         openai_organization=os.getenv("OPENAI_ORGANIZATION"),
         openai_project=os.getenv("OPENAI_PROJECT"),
+        job_log_to_console=_get_env_bool("JOB_LOG_TO_CONSOLE", True),
     )

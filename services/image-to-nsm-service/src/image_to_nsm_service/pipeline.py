@@ -53,6 +53,7 @@ class ImageToNsmPipeline:
         raw_parser: Optional[RawResponseParser] = None,
         normalizer=normalize_nsm_payload,
         validator=validate_nsm_payload,
+        log_job_messages_to_console: bool = True,
     ) -> None:
         self._job_manager = job_manager
         self._prompt_builder = prompt_builder or VersionedPromptBuilder()
@@ -60,6 +61,7 @@ class ImageToNsmPipeline:
         self._raw_parser = raw_parser or RawResponseParser(strip_code_fences=False)
         self._normalizer = normalizer
         self._validator = validator
+        self._log_job_messages_to_console = log_job_messages_to_console
         self._logger = logging.getLogger("image_to_nsm_service.pipeline")
 
     def submit(self, submission: ImageToNsmSubmission):
@@ -250,8 +252,9 @@ class ImageToNsmPipeline:
             self._job_manager.append_log(context.job_id, level, formatted)
         except AttributeError:
             return
-        log_level = getattr(logging, level.upper(), logging.INFO)
-        self._logger.log(log_level, formatted)
+        if self._log_job_messages_to_console:
+            log_level = getattr(logging, level.upper(), logging.INFO)
+            self._logger.log(log_level, formatted)
 
 
 def _to_validation_report(

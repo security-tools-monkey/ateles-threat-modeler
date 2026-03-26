@@ -33,7 +33,11 @@ def create_app() -> FastAPI:
             openai_project=config.openai_project,
         )
     )
-    app.state.pipeline = ImageToNsmPipeline(job_manager, llm_client=llm_client)
+    app.state.pipeline = ImageToNsmPipeline(
+        job_manager,
+        llm_client=llm_client,
+        log_job_messages_to_console=config.job_log_to_console,
+    )
     register_error_handlers(app)
     app.include_router(api_router)
 

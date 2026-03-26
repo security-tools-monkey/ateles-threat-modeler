@@ -23,6 +23,7 @@ Environment overrides:
 - `IMAGE_TO_NSM_DATA_DIR` to change the artifact directory
 - `IMAGE_TO_NSM_DB_PATH` to change the SQLite file location
 - `JOB_STORAGE_MODE=memory` to disable persistence and use in-memory storage (tests only)
+- `JOB_LOG_TO_CONSOLE=false` to disable console output for job processing logs (default: true)
 
 ## LLM provider configuration
 
