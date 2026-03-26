@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional
 
 from .job_manager import JobManager
-from .llm_client import ImagePayload, LlmClient, LlmRequest, MockLlmClient
+from .llm_client import ImagePayload, LlmClient, LlmClientError, LlmRequest, MockLlmClient
 from .models.api import (
     ExtractionIssue,
     JobStatus,
@@ -10,10 +10,16 @@ from .models.api import (
     UnknownField,
     ValidationReport,
 )
-from .normalizer import NormalizationNote as NormalizationNoteRecord, NormalizationResult, normalize_nsm_payload
+from .normalizer import (
+    NORMALIZATION_VERSION,
+    NormalizationNote as NormalizationNoteRecord,
+    NormalizationResult,
+    normalize_nsm_payload,
+)
 from .prompt_builder import PromptBuilder, PromptRequest, VersionedPromptBuilder
 from .extractor.raw_response_parser import RawResponseParser
 from .validator import ValidationResult, validate_nsm_payload
+from .validator.schema_loader import load_schema_version
 from .validator.quality_warnings import PROVENANCE_CONFIDENCE_THRESHOLD
 
 
@@ -71,6 +77,12 @@ class ImageToNsmPipeline:
         self._log(job_id, "info", "Pipeline started.")
 
         prompt_spec = self._prompt_builder.build(PromptRequest(context=submission.context))
+        schema_version = load_schema_version()
+        self._job_manager.update_job(
+            job_id,
+            prompt_version=prompt_spec.version,
+            schema_version=schema_version,
+        )
         self._log(job_id, "info", f"Prompt built (version {prompt_spec.version}).")
         llm_request = LlmRequest(
             image=ImagePayload(
@@ -82,7 +94,41 @@ class ImageToNsmPipeline:
             prompt_version=prompt_spec.version,
             context=submission.context,
         )
-        llm_response = self._llm_client.generate(llm_request)
+        try:
+            llm_response = self._llm_client.generate(llm_request)
+        except LlmClientError as exc:
+            self._job_manager.update_job(
+                job_id,
+                status=JobStatus.failed,
+                llm_provider=exc.metadata.get("provider"),
+                llm_model=exc.metadata.get("model"),
+                llm_request_id=exc.metadata.get("request_id"),
+                llm_response_id=exc.metadata.get("response_id"),
+                errors=[_issue(exc.code, str(exc), severity="error")],
+            )
+            self._log(job_id, "error", f"LLM request failed: {exc}")
+            return
+        except Exception as exc:
+            self._job_manager.update_job(
+                job_id,
+                status=JobStatus.failed,
+                errors=[_issue("LLM_REQUEST_FAILED", f"LLM request failed: {exc}", severity="error")],
+            )
+            self._log(job_id, "error", f"LLM request failed: {exc}")
+            return
+
+        self._job_manager.update_job(
+            job_id,
+            llm_provider=llm_response.metadata.get("provider"),
+            llm_model=llm_response.model,
+            llm_request_id=llm_response.metadata.get("request_id"),
+            llm_response_id=llm_response.metadata.get("response_id"),
+        )
+        self._log(
+            job_id,
+            "info",
+            f"LLM response received (model {llm_response.model}).",
+        )
         raw_output = llm_response.raw_output
         self._job_manager.update_job(job_id, raw_output=raw_output)
         self._log(job_id, "info", "Raw LLM output stored.")
@@ -102,6 +148,7 @@ class ImageToNsmPipeline:
 
         normalization_result: NormalizationResult = self._normalizer(parse_result.payload)
         normalized_payload = normalization_result.payload
+        self._job_manager.update_job(job_id, normalization_version=NORMALIZATION_VERSION)
         self._log(job_id, "info", "Normalization completed.")
 
         validation_result: ValidationResult = self._validator(normalized_payload)

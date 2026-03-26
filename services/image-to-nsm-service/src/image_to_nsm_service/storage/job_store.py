@@ -22,6 +22,13 @@ class JobRow:
     unknowns_json: Optional[str]
     confidence: Optional[float]
     provenance_json: Optional[str]
+    llm_provider: Optional[str]
+    llm_model: Optional[str]
+    llm_request_id: Optional[str]
+    llm_response_id: Optional[str]
+    prompt_version: Optional[str]
+    normalization_version: Optional[str]
+    schema_version: Optional[str]
 
 
 @dataclass(frozen=True)
@@ -97,6 +104,13 @@ class SqliteJobStore:
             unknowns_json=row["unknowns_json"],
             confidence=row["confidence"],
             provenance_json=row["provenance_json"],
+            llm_provider=row["llm_provider"],
+            llm_model=row["llm_model"],
+            llm_request_id=row["llm_request_id"],
+            llm_response_id=row["llm_response_id"],
+            prompt_version=row["prompt_version"],
+            normalization_version=row["normalization_version"],
+            schema_version=row["schema_version"],
         )
 
     def update_job(self, job_id: str, updates: Dict[str, Any]) -> None:
@@ -194,7 +208,14 @@ class SqliteJobStore:
                     errors_json TEXT,
                     unknowns_json TEXT,
                     confidence REAL,
-                    provenance_json TEXT
+                    provenance_json TEXT,
+                    llm_provider TEXT,
+                    llm_model TEXT,
+                    llm_request_id TEXT,
+                    llm_response_id TEXT,
+                    prompt_version TEXT,
+                    normalization_version TEXT,
+                    schema_version TEXT
                 );
                 CREATE TABLE IF NOT EXISTS job_artifacts (
                     job_id TEXT NOT NULL,
@@ -214,6 +235,23 @@ class SqliteJobStore:
                 );
                 """
             )
+            self._ensure_columns(conn)
+
+    def _ensure_columns(self, conn: sqlite3.Connection) -> None:
+        expected = {
+            "llm_provider": "TEXT",
+            "llm_model": "TEXT",
+            "llm_request_id": "TEXT",
+            "llm_response_id": "TEXT",
+            "prompt_version": "TEXT",
+            "normalization_version": "TEXT",
+            "schema_version": "TEXT",
+        }
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+        for column, column_type in expected.items():
+            if column in existing:
+                continue
+            conn.execute(f"ALTER TABLE jobs ADD COLUMN {column} {column_type}")
 
 
 def serialize_json(value: Any) -> Optional[str]:

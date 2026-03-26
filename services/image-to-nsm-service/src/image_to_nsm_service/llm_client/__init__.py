@@ -37,6 +37,32 @@ class LlmClient(ABC):
         """Generate structured output for the provided image and prompt."""
 
 
+class LlmClientError(Exception):
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        metadata: Optional[Dict[str, Any]] = None,
+        retryable: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.metadata = metadata or {}
+        self.retryable = retryable
+
+
+@dataclass(frozen=True)
+class LlmProviderConfig:
+    provider: str
+    model: str
+    timeout_seconds: float
+    openai_api_key: Optional[str] = None
+    openai_base_url: Optional[str] = None
+    openai_organization: Optional[str] = None
+    openai_project: Optional[str] = None
+
+
 class MockLlmClient(LlmClient):
     """Deterministic placeholder LLM client for Step 1 scaffolding."""
 
@@ -121,3 +147,24 @@ def _placeholder_nsm_payload() -> Dict[str, Any]:
             }
         ],
     }
+
+
+def create_llm_client(config: LlmProviderConfig) -> LlmClient:
+    provider = config.provider.strip().lower()
+    if provider in {"mock", "local"}:
+        return MockLlmClient()
+    if provider in {"openai", "openai-responses"}:
+        if not config.openai_api_key:
+            raise LlmClientError(
+                "LLM_CONFIG_ERROR",
+                "OPENAI_API_KEY is required for the OpenAI provider.",
+                metadata={"provider": provider, "model": config.model},
+            )
+        from .openai_client import OpenAiLlmClient
+
+        return OpenAiLlmClient.from_config(config)
+    raise LlmClientError(
+        "LLM_CONFIG_ERROR",
+        f"Unsupported LLM provider '{config.provider}'.",
+        metadata={"provider": config.provider},
+    )

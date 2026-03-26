@@ -71,6 +71,13 @@ class PersistentJobManager:
             unknowns=unknowns,
             confidence=row.confidence,
             provenance=provenance,
+            llm_provider=row.llm_provider,
+            llm_model=row.llm_model,
+            llm_request_id=row.llm_request_id,
+            llm_response_id=row.llm_response_id,
+            prompt_version=row.prompt_version,
+            normalization_version=row.normalization_version,
+            schema_version=row.schema_version,
             logs=logs,
         )
 
@@ -119,7 +126,21 @@ class PersistentJobManager:
             provenance = updates.pop("provenance")
             metadata_updates["provenance_json"] = serialize_json(provenance)
 
-        for key in ("status", "input_filename", "input_content_type", "input_size_bytes", "input_context", "confidence"):
+        for key in (
+            "status",
+            "input_filename",
+            "input_content_type",
+            "input_size_bytes",
+            "input_context",
+            "confidence",
+            "llm_provider",
+            "llm_model",
+            "llm_request_id",
+            "llm_response_id",
+            "prompt_version",
+            "normalization_version",
+            "schema_version",
+        ):
             if key in updates:
                 value = updates.pop(key)
                 metadata_updates[key] = value.value if isinstance(value, JobStatus) else value

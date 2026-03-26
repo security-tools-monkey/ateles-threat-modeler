@@ -7,6 +7,7 @@ from .api.errors import register_error_handlers
 from .config import AppConfig, load_config
 from .job_manager import InMemoryJobManager, PersistentJobManager
 from .logging import configure_logging
+from .llm_client import LlmProviderConfig, create_llm_client
 from .pipeline import ImageToNsmPipeline
 from .storage import LocalArtifactStorage, SqliteJobStore
 
@@ -21,7 +22,18 @@ def create_app() -> FastAPI:
     app.state.config = config
     job_manager = _create_job_manager(config)
     app.state.job_manager = job_manager
-    app.state.pipeline = ImageToNsmPipeline(job_manager)
+    llm_client = create_llm_client(
+        LlmProviderConfig(
+            provider=config.llm_provider,
+            model=config.llm_model,
+            timeout_seconds=config.llm_timeout_seconds,
+            openai_api_key=config.openai_api_key,
+            openai_base_url=config.openai_base_url,
+            openai_organization=config.openai_organization,
+            openai_project=config.openai_project,
+        )
+    )
+    app.state.pipeline = ImageToNsmPipeline(job_manager, llm_client=llm_client)
     register_error_handlers(app)
     app.include_router(api_router)
 

@@ -36,3 +36,9 @@ def load_nsm_schema() -> Dict[str, Any]:
     start = Path(__file__).resolve()
     schema_path = _resolve_schema_path(start)
     return json.loads(schema_path.read_text(encoding="utf-8"))
+
+
+def load_schema_version() -> str:
+    schema = load_nsm_schema()
+    version = schema.get("schema_version")
+    return version if isinstance(version, str) and version.strip() else "unknown"

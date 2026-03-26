@@ -43,6 +43,9 @@ class NormalizationConfig:
     key_aliases_provenance: Dict[str, str] = field(default_factory=dict)
 
 
+NORMALIZATION_VERSION = "v0.1"
+
+
 class _IdAssigner:
     def __init__(self, prefix: str, existing: Iterable[str]) -> None:
         self._prefix = prefix

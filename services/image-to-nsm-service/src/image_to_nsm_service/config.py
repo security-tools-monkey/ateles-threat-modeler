@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import os
 from pathlib import Path
+from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -13,6 +14,13 @@ class AppConfig:
     data_dir: str
     db_path: str
     job_storage_mode: str
+    llm_provider: str
+    llm_model: str
+    llm_timeout_seconds: float
+    openai_api_key: Optional[str]
+    openai_base_url: Optional[str]
+    openai_organization: Optional[str]
+    openai_project: Optional[str]
 
 
 def _get_env_int(name: str, default: int) -> int:
@@ -21,6 +29,16 @@ def _get_env_int(name: str, default: int) -> int:
         return default
     try:
         return int(raw)
+    except ValueError:
+        return default
+
+
+def _get_env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
     except ValueError:
         return default
 
@@ -40,4 +58,11 @@ def load_config() -> AppConfig:
         data_dir=data_dir,
         db_path=db_path,
         job_storage_mode=job_storage_mode,
+        llm_provider=os.getenv("LLM_PROVIDER", "mock").lower(),
+        llm_model=os.getenv("LLM_MODEL", "gpt-5.4"),
+        llm_timeout_seconds=_get_env_float("LLM_TIMEOUT_SECONDS", 120.0),
+        openai_api_key=os.getenv("OPENAI_API_KEY"),
+        openai_base_url=os.getenv("OPENAI_BASE_URL"),
+        openai_organization=os.getenv("OPENAI_ORGANIZATION"),
+        openai_project=os.getenv("OPENAI_PROJECT"),
     )

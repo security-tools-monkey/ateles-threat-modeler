@@ -38,4 +38,11 @@ class JobRecord:
     unknowns: List[Dict[str, Any]] = field(default_factory=list)
     confidence: Optional[float] = None
     provenance: Optional[Dict[str, Any]] = None
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+    llm_request_id: Optional[str] = None
+    llm_response_id: Optional[str] = None
+    prompt_version: Optional[str] = None
+    normalization_version: Optional[str] = None
+    schema_version: Optional[str] = None
     logs: List[ProcessingLogEntry] = field(default_factory=list)

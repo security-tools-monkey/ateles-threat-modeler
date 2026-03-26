@@ -36,6 +36,13 @@ def _to_job_state(job) -> JobState:
         status=job.status,
         created_at=job.created_at,
         updated_at=job.updated_at,
+        llm_provider=job.llm_provider,
+        llm_model=job.llm_model,
+        llm_request_id=job.llm_request_id,
+        llm_response_id=job.llm_response_id,
+        prompt_version=job.prompt_version,
+        normalization_version=job.normalization_version,
+        schema_version=job.schema_version,
     )
 
 
