@@ -47,8 +47,9 @@ class OpenAiLlmClient(LlmClient):
             "prompt_version": request.prompt_version,
             "model": self._model,
         }
+        redacted_payload = _redact_image_payload(request_payload)
         try:
-            logger.debug("OpenAI request payload: %s", request_payload)
+            logger.debug("OpenAI request payload: %s", redacted_payload)
             response = self._client.with_options(timeout=self._timeout_seconds).responses.create(
                 model=request_payload["model"],
                 input=request_payload["input"],
@@ -119,6 +120,38 @@ def _extract_request_id(response: Any) -> Optional[str]:
     if isinstance(request_id, str) and request_id:
         return request_id
     return None
+
+
+def _redact_image_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    input_items = payload.get("input")
+    if not isinstance(input_items, list):
+        return payload
+    redacted_inputs = []
+    for item in input_items:
+        if not isinstance(item, dict):
+            redacted_inputs.append(item)
+            continue
+        content = item.get("content")
+        if not isinstance(content, list):
+            redacted_inputs.append(item)
+            continue
+        redacted_content = []
+        for part in content:
+            if not isinstance(part, dict):
+                redacted_content.append(part)
+                continue
+            if part.get("type") == "input_image":
+                redacted_part = dict(part)
+                redacted_part["image_url"] = "<IMAGE_REDACTED>"
+                redacted_content.append(redacted_part)
+            else:
+                redacted_content.append(part)
+        redacted_item = dict(item)
+        redacted_item["content"] = redacted_content
+        redacted_inputs.append(redacted_item)
+    redacted = dict(payload)
+    redacted["input"] = redacted_inputs
+    return redacted
 
 
 def _extract_usage(usage: Any) -> Dict[str, int]:
