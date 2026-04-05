@@ -41,7 +41,11 @@ def _base_payload() -> dict:
                 "kind": "object",
                 "name": "Service",
                 "type": "service",
-                "trust_boundary": {"level": "public", "name": "Public", "path": ["internet", "public"]},
+                "trust_boundary": {
+                    "level": "public_network",
+                    "name": "Public",
+                    "path": ["internet", "public_network"],
+                },
                 "assets": [],
                 "controls": [],
                 "properties": {},
@@ -92,7 +96,9 @@ def test_schema_validation_catches_missing_required_fields() -> None:
     payload["nodes"][0].pop("trust_boundary")
     result = validate_nsm_payload(payload)
     assert not result.valid
-    assert any("trust_boundary is required" in message for message in result.schema_errors)
+    assert any(
+        "trust_boundary" in message and "required" in message for message in result.schema_errors
+    )
 
 
 def test_semantic_validation_catches_missing_node_reference() -> None:
