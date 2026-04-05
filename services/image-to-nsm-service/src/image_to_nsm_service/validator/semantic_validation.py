@@ -14,6 +14,7 @@ IDENTITY_TYPES: Set[str] = {
 
 
 def _duplicate_ids(items: Iterable[Dict[str, Any]], kind: str) -> List[str]:
+    """Find duplicate ids in nodes/edges; ids are required for graph integrity."""
     seen: Set[str] = set()
     duplicates: Set[str] = set()
     for item in items:
@@ -27,6 +28,7 @@ def _duplicate_ids(items: Iterable[Dict[str, Any]], kind: str) -> List[str]:
 
 
 def _validate_edges_reference_nodes(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]) -> List[str]:
+    """Ensure every edge source/target references a known node id."""
     node_ids = {node.get("id") for node in nodes if isinstance(node.get("id"), str)}
     errors: List[str] = []
     for index, edge in enumerate(edges):
@@ -40,6 +42,7 @@ def _validate_edges_reference_nodes(nodes: List[Dict[str, Any]], edges: List[Dic
 
 
 def _validate_trust_boundaries(nodes: List[Dict[str, Any]]) -> List[str]:
+    """Verify trust_boundary objects exist and include non-empty path arrays."""
     errors: List[str] = []
     for index, node in enumerate(nodes):
         trust_boundary = node.get("trust_boundary")
@@ -53,6 +56,7 @@ def _validate_trust_boundaries(nodes: List[Dict[str, Any]]) -> List[str]:
 
 
 def _validate_node_kind_type(nodes: List[Dict[str, Any]]) -> List[str]:
+    """Check that node.type matches node.kind (identity vs object)."""
     errors: List[str] = []
     for index, node in enumerate(nodes):
         kind = node.get("kind")
@@ -69,6 +73,10 @@ def _validate_node_kind_type(nodes: List[Dict[str, Any]]) -> List[str]:
 
 
 def validate_semantics(payload: Dict[str, Any]) -> List[str]:
+    """Run semantic checks beyond schema validation.
+
+    payload is required and must contain nodes/edges arrays.
+    """
     nodes = payload.get("nodes") or []
     edges = payload.get("edges") or []
     if not isinstance(nodes, list) or not isinstance(edges, list):

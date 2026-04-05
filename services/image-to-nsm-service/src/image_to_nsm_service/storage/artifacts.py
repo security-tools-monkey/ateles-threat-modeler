@@ -28,7 +28,9 @@ class ArtifactStorage(Protocol):
     ) -> StoredArtifact:
         ...
 
-    def store_text(self, job_id: str, artifact_type: str, text: str) -> StoredArtifact:
+    def store_text(
+        self, job_id: str, artifact_type: str, text: str, *, suffix: Optional[str] = None
+    ) -> StoredArtifact:
         ...
 
     def store_json(self, job_id: str, artifact_type: str, payload: Any) -> StoredArtifact:
@@ -69,9 +71,11 @@ class LocalArtifactStorage:
             content_type=content_type,
         )
 
-    def store_text(self, job_id: str, artifact_type: str, text: str) -> StoredArtifact:
+    def store_text(
+        self, job_id: str, artifact_type: str, text: str, *, suffix: Optional[str] = None
+    ) -> StoredArtifact:
         data = text.encode("utf-8")
-        path = self._resolve_path(job_id, artifact_type, ".txt")
+        path = self._resolve_path(job_id, artifact_type, suffix or ".txt")
         path.write_bytes(data)
         return StoredArtifact(artifact_type=artifact_type, path=str(path), size_bytes=len(data))
 

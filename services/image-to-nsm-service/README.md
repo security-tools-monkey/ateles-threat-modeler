@@ -1,6 +1,43 @@
 # Image to NSM Service (Step 1 PoC)
 
-Minimal API-first service for the Image to NSM Step 1 PoC. This service currently exposes only a health endpoint and provides the internal module structure for future implementation.
+Minimal API-first service for the Image to NSM Step 1 PoC. It exposes health, image-to-NSM submission, and job/result endpoints, plus the internal module structure for future implementation.
+
+This service is the Step 1 proof-of-concept for the broader threat modeling engine. Its purpose is to accept architecture diagram images and convert them into a strict Normalized System Model (NSM) JSON document, which is the canonical internal representation of a system (nodes, edges, trust boundaries, assets, controls, provenance). That NSM output is the foundation that later stages will use for deterministic analysis and threat modeling.
+
+The pipeline is designed to be API-first and microservice-friendly: an image upload (plus optional context) is sent to a pluggable LLM provider, then the response is parsed, normalized, and validated against the NSM schema. The service surfaces schema errors, semantic warnings, unknown fields, and confidence signals so uncertainty is preserved rather than hidden. It also persists job metadata and artifacts (raw LLM output, normalized NSM, validation reports) to support traceability and debugging.
+
+The goal is repeatable, deterministic post-processing around a probabilistic LLM extraction step. By producing a consistent, validated NSM document and exposing status/result endpoints, this service establishes a clean contract for downstream threat inference, question generation, and prioritization layers without coupling the system to any UI or specific diagram source.
+
+## Pipeline flow and outputs
+
+The pipeline runs these stages in order:
+1. Accept image upload and create a job record.
+2. Build the prompt and send the image + prompt to the LLM provider.
+3. Store the raw LLM response text.
+4. Parse and normalize the payload into strict NSM JSON.
+5. Validate against the NSM schema and run semantic/quality checks.
+6. Persist the final NSM output if validation passes; otherwise mark the job failed and surface errors.
+
+When persistence is enabled (default), artifacts are written under `services/image-to-nsm-service/data/<job_id>/`:
+- `raw_llm_output.txt`: the raw text output returned by the LLM.
+- `normalized_nsm.json`: the normalized NSM JSON after parsing and cleanup.
+- `final_nsm.json`: the final NSM JSON that passed validation (only present on success).
+
+Related artifacts you may also see:
+- `validation_report.json`: schema/semantic errors and warnings.
+
+Normalization is the deterministic cleanup and shaping step that turns messy LLM output into your canonical NSM format. It:
+- Fills defaults (missing fields, IDs, schema_version).
+- Maps aliases/synonyms and enum variants to allowed values.
+- Converts simplified forms (like string assets/controls/unknowns) into structured objects.
+- Moves/cleans unsupported fields.
+
+Validation checks whether the normalized output conforms to the canonical schema and rules. It:
+- Enforces required fields and types.
+- Flags schema violations or semantic errors.
+- Produces warnings for quality issues.
+
+In the pipeline: LLM output → normalization → validation. Normalization makes the output shape-correct and consistent; validation decides whether it’s acceptable as a final NSM.
 
 ## Local run
 

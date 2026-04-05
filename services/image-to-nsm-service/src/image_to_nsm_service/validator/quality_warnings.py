@@ -9,10 +9,15 @@ PROVENANCE_CONFIDENCE_THRESHOLD = 0.6
 
 
 def _ratio(count: int, total: int) -> float:
+    """Compute a safe ratio for quality thresholds."""
     return 0.0 if total == 0 else count / total
 
 
 def warn_on_quality(payload: Dict[str, Any]) -> List[str]:
+    """Emit non-fatal quality warnings for low-confidence or sparse data.
+
+    payload is required; nodes/edges are optional but should be arrays.
+    """
     nodes = payload.get("nodes") or []
     edges = payload.get("edges") or []
     warnings: List[str] = []

@@ -1,0 +1,362 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/nsm_llm_output.schema.v0.1.json",
+  "title": "Simplified NSM LLM Output Schema v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "title",
+    "description",
+    "nodes",
+    "edges"
+  ],
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
+    }
+  },
+  "$defs": {
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+
+    "node_kind": {
+      "type": "string",
+      "enum": ["object", "identity"]
+    },
+
+    "trust_boundary_level": {
+      "type": "string",
+      "enum": [
+        "internet",
+        "public_network",
+        "private_network",
+        "vpc",
+        "subnet",
+        "cluster",
+        "namespace",
+        "node",
+        "admin_plane",
+        "saas",
+        "device",
+        "unknown"
+      ]
+    },
+
+    "object_type": {
+      "type": "string",
+      "enum": [
+        "service",
+        "web_app",
+        "mobile_app",
+        "api",
+        "gateway",
+        "load_balancer",
+        "pod",
+        "container",
+        "worker",
+        "database",
+        "bucket",
+        "cache",
+        "queue",
+        "topic",
+        "k8s_cluster",
+        "k8s_control_plane",
+        "ingress",
+        "waf",
+        "secret_store",
+        "siem",
+        "cdn",
+        "third_party_saas",
+        "llm_runtime",
+        "model_provider",
+        "unknown"
+      ]
+    },
+
+    "identity_type": {
+      "type": "string",
+      "enum": [
+        "external_user",
+        "internal_user",
+        "admin",
+        "service_account",
+        "workload_identity",
+        "third_party",
+        "api_client",
+        "anonymous",
+        "unknown"
+      ]
+    },
+
+    "direction": {
+      "type": "string",
+      "enum": ["uni", "bi"],
+      "default": "uni"
+    },
+
+    "protocol_type": {
+      "type": "string",
+      "enum": [
+        "http",
+        "https",
+        "grpc",
+        "tcp",
+        "udp",
+        "s3",
+        "amqp",
+        "kafka",
+        "sql",
+        "dns",
+        "filesystem",
+        "unknown"
+      ]
+    },
+
+    "authn_type": {
+      "type": "string",
+      "enum": [
+        "none",
+        "password",
+        "session_cookie",
+        "jwt",
+        "oauth2",
+        "oidc",
+        "api_key",
+        "mtls",
+        "signed_url",
+        "service_account_token",
+        "unknown"
+      ]
+    },
+
+    "asset_type": {
+      "type": "string",
+      "enum": [
+        "photos",
+        "tokens",
+        "pii",
+        "secrets",
+        "models",
+        "logs",
+        "credentials",
+        "telemetry",
+        "source_code",
+        "config",
+        "metadata",
+        "unknown"
+      ]
+    },
+
+    "control_type": {
+      "type": "string",
+      "enum": [
+        "tls",
+        "mtls",
+        "waf",
+        "csp",
+        "encryption",
+        "rbac",
+        "network_policy",
+        "admission_policy",
+        "rate_limiting",
+        "authentication",
+        "authorization",
+        "logging",
+        "monitoring",
+        "secret_management",
+        "content_scanning",
+        "sandboxing",
+        "unknown"
+      ]
+    },
+
+    "unknown_text": {
+      "type": "string",
+      "minLength": 1
+    },
+
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "type",
+        "trust_boundary",
+        "assets",
+        "controls",
+        "tags",
+        "unknowns",
+        "confidence"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "$ref": "#/$defs/node_kind"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string"
+        },
+        "trust_boundary": {
+          "$ref": "#/$defs/trust_boundary_level"
+        },
+        "assets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/asset_type"
+          },
+          "default": []
+        },
+        "controls": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/control_type"
+          },
+          "default": []
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "unknowns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/unknown_text"
+          },
+          "default": []
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "kind": { "const": "object" } }
+          },
+          "then": {
+            "properties": {
+              "type": { "$ref": "#/$defs/object_type" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "kind": { "const": "identity" } }
+          },
+          "then": {
+            "properties": {
+              "type": { "$ref": "#/$defs/identity_type" }
+            }
+          }
+        }
+      ]
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "source",
+        "target",
+        "name",
+        "direction",
+        "protocol",
+        "authn",
+        "assets",
+        "controls",
+        "tags",
+        "unknowns",
+        "confidence"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "direction": {
+          "$ref": "#/$defs/direction"
+        },
+        "protocol": {
+          "$ref": "#/$defs/protocol_type"
+        },
+        "authn": {
+          "$ref": "#/$defs/authn_type"
+        },
+        "assets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/asset_type"
+          },
+          "default": []
+        },
+        "controls": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/control_type"
+          },
+          "default": []
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "unknowns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/unknown_text"
+          },
+          "default": []
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      }
+    }
+  }
+}

@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.local/schemas/nsm.schema.v0.1.json",
-  "title": "Normalized System Model (NSM) - Graph Schema v0.1",
+  "$id": "https://example.local/schemas/nsm.schema.v0.2.json",
+  "title": "Normalized System Model (NSM) - Graph Schema v0.2",
   "type": "object",
   "required": ["schema_version", "model_id", "nodes", "edges"],
   "additionalProperties": false,
   "properties": {
     "schema_version": {
       "type": "string",
-      "const": "0.1"
+      "const": "0.2"
     },
     "model_id": {
       "type": "string"

@@ -27,6 +27,7 @@ from .validator.quality_warnings import PROVENANCE_CONFIDENCE_THRESHOLD
 
 @dataclass(frozen=True)
 class ImageToNsmSubmission:
+    """Input for a pipeline run; filename/content_type/size_bytes/data required."""
     filename: str
     content_type: str
     size_bytes: int
@@ -38,6 +39,7 @@ class ImageToNsmSubmission:
 
 @dataclass(frozen=True)
 class PipelineContext:
+    """Identifiers carried through the pipeline; job_id/request_id required."""
     job_id: str
     request_id: str
     correlation_id: Optional[str] = None
@@ -55,6 +57,12 @@ class ImageToNsmPipeline:
         validator=validate_nsm_payload,
         log_job_messages_to_console: bool = True,
     ) -> None:
+        """Create the pipeline with required job manager and optional overrides.
+
+        Required: job_manager.
+        Optional: prompt_builder, llm_client, raw_parser, normalizer, validator.
+        log_job_messages_to_console controls console duplication of job logs.
+        """
         self._job_manager = job_manager
         self._prompt_builder = prompt_builder or VersionedPromptBuilder()
         self._llm_client = llm_client or MockLlmClient()
@@ -65,6 +73,11 @@ class ImageToNsmPipeline:
         self._logger = logging.getLogger("image_to_nsm_service.pipeline")
 
     def submit(self, submission: ImageToNsmSubmission):
+        """Run the full pipeline for a required submission and return the final job record.
+
+        Required fields: filename, content_type, size_bytes, data.
+        Optional fields: context, request_id, correlation_id.
+        """
         job = self._job_manager.create_job(input_filename=submission.filename)
         request_id = submission.request_id or job.job_id
         correlation_id = submission.correlation_id
@@ -97,6 +110,11 @@ class ImageToNsmPipeline:
         return self._job_manager.get_job(job.job_id) or job
 
     def _run_pipeline(self, context: PipelineContext, submission: ImageToNsmSubmission) -> None:
+        """Execute each pipeline stage in order and update job state.
+
+        Checks are intentionally defensive: failures are recorded as job errors
+        so downstream steps are deterministic even when LLM output is malformed.
+        """
         job_id = context.job_id
         self._job_manager.set_status(job_id, JobStatus.running)
         self._job_manager.update_job(job_id, processing_started_at=datetime.now(timezone.utc))
@@ -260,6 +278,10 @@ class ImageToNsmPipeline:
         *,
         stage: Optional[str] = None,
     ) -> None:
+        """Persist a job log entry and optionally mirror it to console logging.
+
+        context and message are required; stage is optional and used for grouping.
+        """
         parts = [f"job_id={context.job_id}", f"request_id={context.request_id}"]
         if context.correlation_id:
             parts.append(f"correlation_id={context.correlation_id}")

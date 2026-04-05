@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 from openai import OpenAI
 
 from . import ImagePayload, LlmClient, LlmClientError, LlmProviderConfig, LlmRequest, LlmResponse
+from ..validator.schema_loader import load_llm_schema
 
 logger = logging.getLogger("image_to_nsm_service.llm_client.openai")
 
@@ -30,6 +31,13 @@ class OpenAiLlmClient(LlmClient):
 
     def generate(self, request: LlmRequest) -> LlmResponse:
         image_url = _encode_image_data_url(request.image)
+        llm_schema = _sanitize_llm_schema(load_llm_schema())
+        format_spec = {
+            "type": "json_schema",
+            "name": "nsm_llm_output",
+            "schema": llm_schema,
+            "strict": True,
+        }
         request_payload = {
             "model": self._model,
             "input": [
@@ -41,6 +49,7 @@ class OpenAiLlmClient(LlmClient):
                     ],
                 }
             ],
+            "text": {"format": format_spec},
         }
         metadata: Dict[str, Any] = {
             "provider": "openai",
@@ -53,6 +62,7 @@ class OpenAiLlmClient(LlmClient):
             response = self._client.with_options(timeout=self._timeout_seconds).responses.create(
                 model=request_payload["model"],
                 input=request_payload["input"],
+                text=request_payload["text"],
             )
         except Exception as exc:
             raise LlmClientError(
@@ -165,6 +175,40 @@ def _extract_usage(usage: Any) -> Dict[str, int]:
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             result[key] = int(value)
     return result
+
+
+def _sanitize_llm_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(schema, dict):
+        return {}
+    cleaned = _strip_schema_keyword(schema, "allOf")
+    return _enforce_required_properties(cleaned)
+
+
+def _enforce_required_properties(value: Any) -> Any:
+    if isinstance(value, dict):
+        cleaned: Dict[str, Any] = {}
+        for key, item in value.items():
+            cleaned[key] = _enforce_required_properties(item)
+        properties = cleaned.get("properties")
+        if isinstance(properties, dict):
+            cleaned["required"] = list(properties.keys())
+        return cleaned
+    if isinstance(value, list):
+        return [_enforce_required_properties(item) for item in value]
+    return value
+
+
+def _strip_schema_keyword(value: Any, keyword: str) -> Any:
+    if isinstance(value, dict):
+        cleaned: Dict[str, Any] = {}
+        for key, item in value.items():
+            if key == keyword:
+                continue
+            cleaned[key] = _strip_schema_keyword(item, keyword)
+        return cleaned
+    if isinstance(value, list):
+        return [_strip_schema_keyword(item, keyword) for item in value]
+    return value
 
 
 def _normalize_usage_map(usage: Dict[str, Any]) -> Dict[str, int]:

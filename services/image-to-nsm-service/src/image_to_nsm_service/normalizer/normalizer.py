@@ -12,6 +12,7 @@ from ..validator.semantic_validation import IDENTITY_TYPES
 
 @dataclass(frozen=True)
 class NormalizationNote:
+    """Audit note explaining a normalization change and its rationale."""
     path: str
     message: str
     original_value: Optional[Any] = None
@@ -20,12 +21,17 @@ class NormalizationNote:
 
 @dataclass(frozen=True)
 class NormalizationResult:
+    """Normalized payload plus a list of normalization notes."""
     payload: Dict[str, Any]
     notes: List[NormalizationNote] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class NormalizationConfig:
+    """Normalization defaults and synonym/alias mappings.
+
+    schema_version is required; all other fields are optional defaults.
+    """
     schema_version: str
     default_model_id: str = "model-unknown"
     default_title: str = "Unknown architecture"
@@ -47,12 +53,14 @@ NORMALIZATION_VERSION = "v0.1"
 
 
 class _IdAssigner:
+    """Generate deterministic ids with a prefix, avoiding existing ids."""
     def __init__(self, prefix: str, existing: Iterable[str]) -> None:
         self._prefix = prefix
         self._existing = {value for value in existing if isinstance(value, str)}
         self._counter = 1
 
     def next_id(self) -> str:
+        """Return the next unused id for the configured prefix."""
         while True:
             candidate = f"{self._prefix}{self._counter}"
             self._counter += 1
@@ -67,6 +75,11 @@ _ENUM_CLEAN_RE = re.compile(r"[^a-z0-9_]+")
 def normalize_nsm_payload(
     payload: Any, config: Optional[NormalizationConfig] = None
 ) -> NormalizationResult:
+    """Normalize a raw NSM-like payload into canonical form.
+
+    payload is required but may be any type; config is optional.
+    All checks are defensive to keep normalization deterministic.
+    """
     config = config or _default_config()
     notes: List[NormalizationNote] = []
     if not isinstance(payload, dict):
@@ -86,7 +99,7 @@ def normalize_nsm_payload(
     node_keys = set(node_template.keys())
     edge_keys = set(edge_template.keys())
     assets_keys = list_item_templates.get("assets", {"type", "name", "sensitivity", "direction"})
-    controls_keys = list_item_templates.get("controls", {"name", "category", "mode", "status"})
+    controls_keys = list_item_templates.get("controls") or {"name", "category", "mode", "status"}
     unknowns_keys = list_item_templates.get("unknowns", {"field", "reason", "question_hint"})
 
     nodes_raw = normalized.get("nodes")
@@ -154,6 +167,7 @@ def normalize_nsm_payload(
 
 
 def _default_config() -> NormalizationConfig:
+    """Build normalization config from the canonical schema defaults."""
     schema = load_nsm_schema()
     schema_version = str(schema.get("schema_version", "0.1"))
     return NormalizationConfig(
@@ -190,6 +204,7 @@ def _default_config() -> NormalizationConfig:
 
 
 def _default_synonyms() -> Dict[str, Dict[str, str]]:
+    """Synonym mappings to coerce common variants into allowed enums."""
     return {
         "node.kind": {
             "actor": "identity",
@@ -265,6 +280,7 @@ def _default_synonyms() -> Dict[str, Dict[str, str]]:
 
 
 def _default_control_mappings() -> Dict[str, Dict[str, str]]:
+    """Mappings from control keywords to full control objects."""
     return {
         "mfa": {"name": "MFA", "category": "authn", "mode": "preventive", "status": "unknown"},
         "2fa": {"name": "2FA", "category": "authn", "mode": "preventive", "status": "unknown"},
@@ -281,6 +297,7 @@ def _default_control_mappings() -> Dict[str, Dict[str, str]]:
 
 
 def _default_control_field_aliases() -> Dict[str, str]:
+    """Field aliases that can be promoted into controls."""
     return {
         "mfa": "mfa",
         "2fa": "2fa",
@@ -295,7 +312,24 @@ def _default_control_field_aliases() -> Dict[str, str]:
 
 
 def _schema_templates() -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, set[str]]]:
+    """Return node/edge templates and list-item keys from the canonical schema.
+
+    Supports both example-style schemas and JSON Schema files.
+    """
     schema = load_nsm_schema()
+    if _is_json_schema(schema):
+        node_template = _json_schema_properties(schema, "node")
+        edge_template = _json_schema_properties(schema, "edge")
+        list_item_templates = {
+            "assets": _json_schema_list_item_keys(schema, "node", "assets")
+            or _json_schema_list_item_keys(schema, "edge", "assets"),
+            "controls": _json_schema_list_item_keys(schema, "node", "controls")
+            or _json_schema_list_item_keys(schema, "edge", "controls"),
+            "unknowns": _json_schema_list_item_keys(schema, "node", "unknowns")
+            or _json_schema_list_item_keys(schema, "edge", "unknowns"),
+        }
+        return node_template, edge_template, list_item_templates
+
     node_template = _first_dict(schema.get("nodes", []))
     edge_template = _first_dict(schema.get("edges", []))
 
@@ -314,7 +348,64 @@ def _schema_templates() -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, set[s
     return node_template, edge_template, list_item_templates
 
 
+def _is_json_schema(schema: Dict[str, Any]) -> bool:
+    """Detect JSON Schema shape so we can extract keys from $defs."""
+    return "$defs" in schema or "properties" in schema
+
+
+def _json_schema_def(schema: Dict[str, Any], name: str) -> Dict[str, Any]:
+    """Return a named definition from $defs, or empty dict if missing."""
+    defs = schema.get("$defs")
+    if not isinstance(defs, dict):
+        return {}
+    value = defs.get(name)
+    return value if isinstance(value, dict) else {}
+
+
+def _json_schema_properties(schema: Dict[str, Any], def_name: str) -> Dict[str, Any]:
+    """Return properties for a JSON Schema definition."""
+    definition = _json_schema_def(schema, def_name)
+    props = definition.get("properties")
+    if not isinstance(props, dict):
+        return {}
+    return dict(props)
+
+
+def _json_schema_list_item_keys(schema: Dict[str, Any], def_name: str, key: str) -> set[str]:
+    """Resolve list item keys for assets/controls/unknowns definitions."""
+    definition = _json_schema_def(schema, def_name)
+    props = definition.get("properties")
+    if not isinstance(props, dict):
+        return set()
+    items = props.get(key)
+    if not isinstance(items, dict):
+        return set()
+    item_spec = items.get("items")
+    if isinstance(item_spec, dict):
+        item_props = item_spec.get("properties")
+        if isinstance(item_props, dict):
+            return set(item_props.keys())
+        ref = item_spec.get("$ref")
+        return _json_schema_ref_keys(schema, ref)
+    return set()
+
+
+def _json_schema_ref_keys(schema: Dict[str, Any], ref: Any) -> set[str]:
+    """Resolve $ref target properties as a key set."""
+    if not isinstance(ref, str):
+        return set()
+    if not ref.startswith("#/$defs/"):
+        return set()
+    def_name = ref.split("#/$defs/")[-1]
+    definition = _json_schema_def(schema, def_name)
+    props = definition.get("properties")
+    if not isinstance(props, dict):
+        return set()
+    return set(props.keys())
+
+
 def _first_dict(items: Iterable[Any]) -> Dict[str, Any]:
+    """Return the first dict in an iterable or an empty dict."""
     for item in items:
         if isinstance(item, dict):
             return item
@@ -322,6 +413,7 @@ def _first_dict(items: Iterable[Any]) -> Dict[str, Any]:
 
 
 def _normalize_top_level(payload: Dict[str, Any], config: NormalizationConfig, notes: List[NormalizationNote]) -> None:
+    """Normalize required top-level fields with defaults when missing."""
     schema_version = payload.get("schema_version")
     if not isinstance(schema_version, str) or not schema_version.strip():
         notes.append(
@@ -360,6 +452,7 @@ def _normalize_node(
     control_keys: set[str],
     unknowns_keys: set[str],
 ) -> Dict[str, Any]:
+    """Normalize a single node, filling required fields and enforcing enums."""
     if not isinstance(node, dict):
         notes.append(
             NormalizationNote(
@@ -465,6 +558,14 @@ def _normalize_node(
     node["provenance"] = _normalize_provenance(
         node.get("provenance"), config, notes, f"nodes[{index}].provenance"
     )
+    _merge_confidence_into_provenance(
+        node,
+        node["provenance"],
+        config,
+        notes,
+        source_path=f"nodes[{index}].confidence",
+        provenance_path=f"nodes[{index}].provenance",
+    )
 
     _move_unsupported_fields(
         node,
@@ -491,6 +592,7 @@ def _normalize_edge(
     unknowns_keys: set[str],
     name_to_id: Dict[str, str],
 ) -> Dict[str, Any]:
+    """Normalize a single edge and coerce endpoints into node ids."""
     if not isinstance(edge, dict):
         notes.append(
             NormalizationNote(
@@ -560,6 +662,14 @@ def _normalize_edge(
     edge["provenance"] = _normalize_provenance(
         edge.get("provenance"), config, notes, f"edges[{index}].provenance"
     )
+    _merge_confidence_into_provenance(
+        edge,
+        edge["provenance"],
+        config,
+        notes,
+        source_path=f"edges[{index}].confidence",
+        provenance_path=f"edges[{index}].provenance",
+    )
 
     _move_unsupported_fields(
         edge,
@@ -577,6 +687,7 @@ def _normalize_edge(
 def _normalize_edge_endpoint(
     value: Any, name_to_id: Dict[str, str], notes: List[NormalizationNote], path: str
 ) -> str:
+    """Normalize edge endpoints; map node names to ids when possible."""
     if isinstance(value, dict):
         if isinstance(value.get("id"), str):
             return value["id"]
@@ -621,6 +732,7 @@ def _normalize_edge_endpoint(
 def _normalize_trust_boundary(
     value: Any, config: NormalizationConfig, notes: List[NormalizationNote], path: str
 ) -> Dict[str, Any]:
+    """Normalize trust boundaries; accept strings or objects, default when missing."""
     if isinstance(value, str):
         level = _normalize_enum_value(value, "trust_boundary.level", config) or "unknown"
         return {"level": level, "name": _title_from_enum(level), "path": [level]}
@@ -661,6 +773,7 @@ def _normalize_assets(
     path: str,
     asset_keys: set[str],
 ) -> List[Dict[str, Any]]:
+    """Normalize assets into structured objects; accept strings or lists."""
     if value is None:
         return []
     if isinstance(value, str):
@@ -716,6 +829,7 @@ def _normalize_controls(
     path: str,
     control_keys: set[str],
 ) -> List[Dict[str, Any]]:
+    """Normalize controls into structured objects; accept strings or lists."""
     if value is None:
         return []
     if isinstance(value, (str, dict)):
@@ -756,6 +870,7 @@ def _normalize_controls(
 
 
 def _control_from_string(raw: str, config: NormalizationConfig) -> Dict[str, str]:
+    """Map a control string to a full control object using known mappings."""
     cleaned = _enum_clean(raw)
     mapping = config.control_mappings.get(cleaned)
     if mapping:
@@ -768,6 +883,7 @@ def _control_from_string(raw: str, config: NormalizationConfig) -> Dict[str, str
 
 
 def _normalize_tags(value: Any, notes: List[NormalizationNote], path: str) -> List[str]:
+    """Normalize tags into a list of strings; drop invalid entries."""
     if value is None:
         return []
     if isinstance(value, str):
@@ -790,6 +906,7 @@ def _normalize_unknowns(
     path: str,
     unknowns_keys: set[str],
 ) -> List[Dict[str, Any]]:
+    """Normalize unknowns into objects; accept strings or dicts."""
     if value is None:
         return []
     if isinstance(value, str):
@@ -826,6 +943,7 @@ def _normalize_unknowns(
 
 
 def _normalize_properties(value: Any, notes: List[NormalizationNote], path: str) -> Dict[str, Any]:
+    """Normalize properties into a dict; default to empty when missing."""
     if value is None:
         return {}
     if not isinstance(value, dict):
@@ -839,6 +957,7 @@ def _normalize_properties(value: Any, notes: List[NormalizationNote], path: str)
 def _normalize_provenance(
     value: Any, config: NormalizationConfig, notes: List[NormalizationNote], path: str
 ) -> Dict[str, Any]:
+    """Normalize provenance, filling source/method/confidence/evidence defaults."""
     if not isinstance(value, dict):
         notes.append(
             NormalizationNote(
@@ -875,9 +994,47 @@ def _normalize_provenance(
     return provenance
 
 
+def _merge_confidence_into_provenance(
+    container: Dict[str, Any],
+    provenance: Dict[str, Any],
+    config: NormalizationConfig,
+    notes: List[NormalizationNote],
+    *,
+    source_path: str,
+    provenance_path: str,
+) -> None:
+    """Merge simplified confidence into provenance and drop the top-level field."""
+    if not isinstance(container, dict):
+        return
+    confidence = container.get("confidence")
+    if isinstance(confidence, (int, float)) and not isinstance(confidence, bool):
+        provenance["confidence"] = round(float(confidence), 4)
+        provenance.setdefault("source", config.default_provenance_source)
+        provenance.setdefault("method", config.default_provenance_method)
+        provenance.setdefault("evidence", list(config.default_evidence))
+        notes.append(
+            NormalizationNote(
+                path=provenance_path,
+                message="Merged confidence into provenance.",
+                original_value=confidence,
+                normalized_value=provenance.get("confidence"),
+            )
+        )
+    elif confidence is not None:
+        notes.append(
+            NormalizationNote(
+                path=source_path,
+                message="confidence present but invalid; ignored.",
+                original_value=confidence,
+            )
+        )
+    container.pop("confidence", None)
+
+
 def _normalize_confidence(
     value: Any, default: float, notes: List[NormalizationNote], path: str
 ) -> float:
+    """Normalize confidence to [0,1], defaulting when invalid or missing."""
     raw = value
     confidence: Optional[float] = None
     if isinstance(value, (int, float)) and not isinstance(value, bool):
@@ -913,6 +1070,7 @@ def _apply_key_aliases(
     notes: List[NormalizationNote],
     path: str,
 ) -> None:
+    """Map alias keys to canonical keys and record notes."""
     for alias, canonical in aliases.items():
         if alias in data and canonical not in data:
             data[canonical] = data.pop(alias)
@@ -925,6 +1083,7 @@ def _apply_key_aliases(
 
 
 def _normalize_enum_value(value: Any, key: str, config: NormalizationConfig) -> Optional[str]:
+    """Normalize enum values by cleaning and applying synonym mappings."""
     if not isinstance(value, str):
         return None
     cleaned = _enum_clean(value)
@@ -933,6 +1092,7 @@ def _normalize_enum_value(value: Any, key: str, config: NormalizationConfig) -> 
 
 
 def _enum_clean(value: str) -> str:
+    """Normalize raw enum values into lowercase underscore form."""
     cleaned = value.strip().lower().replace("-", "_").replace(" ", "_")
     cleaned = _ENUM_CLEAN_RE.sub("_", cleaned)
     cleaned = re.sub(r"_+", "_", cleaned).strip("_")
@@ -940,12 +1100,14 @@ def _enum_clean(value: str) -> str:
 
 
 def _title_from_enum(value: str) -> str:
+    """Humanize enum values into title-cased names."""
     if not value:
         return "Unknown"
     return value.replace("_", " ").title()
 
 
 def _collect_ids(items: Iterable[Any]) -> List[str]:
+    """Collect string ids from a list of nodes or edges."""
     ids = []
     for item in items:
         if isinstance(item, dict):
@@ -956,6 +1118,7 @@ def _collect_ids(items: Iterable[Any]) -> List[str]:
 
 
 def _node_name_index(nodes: Iterable[Dict[str, Any]]) -> Dict[str, str]:
+    """Index node names to ids for edge endpoint normalization."""
     name_to_id: Dict[str, str] = {}
     for node in nodes:
         node_id = node.get("id")
@@ -975,6 +1138,7 @@ def _move_unsupported_fields(
     path: str,
     controls: List[Dict[str, Any]],
 ) -> None:
+    """Move unsupported fields into properties or convert to controls."""
     for key in list(item.keys()):
         if key in allowed_keys:
             continue
@@ -1009,6 +1173,7 @@ def _strip_extra_fields(
     notes: List[NormalizationNote],
     path: str,
 ) -> None:
+    """Drop nested fields not allowed by the schema and record notes."""
     for key in list(item.keys()):
         if key in allowed_keys:
             continue

@@ -105,7 +105,12 @@ class PersistentJobManager:
         if "raw_output" in updates:
             raw_output = updates.pop("raw_output")
             if raw_output is not None:
-                stored = self._artifacts.store_text(job_id, "raw_llm_output", raw_output)
+                stored = self._artifacts.store_text(
+                    job_id,
+                    "raw_llm_output",
+                    raw_output,
+                    suffix=".json",
+                )
                 artifact_updates["raw_llm_output"] = _to_artifact_row(stored, artifact_metadata)
         if "normalized_output" in updates:
             normalized = updates.pop("normalized_output")

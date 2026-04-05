@@ -14,6 +14,11 @@ JsonInput = Union[str, Dict[str, Any]]
 
 
 def validate_nsm_payload(payload: JsonInput) -> ValidationResult:
+    """Validate payload against schema and semantic rules.
+
+    payload is required and can be a JSON string or a dict.
+    Returns a ValidationResult with schema_errors/semantic_errors/warnings.
+    """
     result = ValidationResult()
 
     if isinstance(payload, str):
